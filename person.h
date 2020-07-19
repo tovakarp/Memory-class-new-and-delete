@@ -1,17 +1,13 @@
 #ifndef __PERSON_H__
 #define __PERSON_H__
 
-#include <iostream>
-#include <cstddef>
+#include <new>		// for std::nothrow_t
 #include <cstring>
 
 class Person
 {
 public:
-	Person(const char *name, unsigned int id, unsigned char age);
-	
-    static void *s_pool;
-    static void *s_firstFree;
+	Person(const char *name = "", unsigned int id = 0, unsigned char age = 0);
 
     /* throwing */	void* operator new ( size_t count );
 	/* no-throw */	void* operator new (std::size_t size, const std::nothrow_t& nothrow_value) throw();	
@@ -21,12 +17,14 @@ public:
 	/* no-throw */	void operator delete (void* ptr, const std::nothrow_t& nothrow_constant) throw();	
 	/* placement */	void operator delete (void* ptr, void* voidptr2) throw();
 	
-private:
+private:		
+    static char s_pool[];
+    static void *s_firstFree;
+
     char m_name[32];
     unsigned int m_id;
     unsigned char m_age;
-	
-	static void* getNextFreeBlock();
+
 	
     /* throwing */	void* operator new [] ( size_t count );
 	/* no-throw */	void* operator new [] (std::size_t size, const std::nothrow_t& nothrow_value) throw();	
@@ -41,21 +39,22 @@ inline Person::Person(const char *name, unsigned int id, unsigned char age):
 	m_id(id), 
 	m_age(age)
 {
-    strcpy(m_name, name);
+    memcpy(m_name, name, 32);
 }
 
 
 
 inline void* Person::operator new (size_t count)
 {
-	 //std::cout << "here\n";
-    if (!s_firstFree)
+    if (!s_firstFree) 
     {
-    	//std::cout << "could not allocate\n";
         throw std::bad_alloc();
     }
-
-    return getNextFreeBlock();
+	
+	void* freeBlock = s_firstFree;
+	s_firstFree = *reinterpret_cast<Person**>(s_firstFree);
+	
+    return freeBlock;
 }
 
 
@@ -66,7 +65,10 @@ inline void* Person::operator new (std::size_t size, const std::nothrow_t& nothr
         return NULL;
     }
 
-    return getNextFreeBlock();
+    void* freeBlock = s_firstFree;
+	s_firstFree = *reinterpret_cast<Person**>(s_firstFree);
+	
+    return freeBlock;
 }
 
 
@@ -78,14 +80,13 @@ inline void* Person::operator new (std::size_t size, void* ptr) throw()
 
 inline void Person::operator delete (void* ptr) throw()
 {
-    if (!ptr)
+    if (ptr)
     {
-        return;
+        *reinterpret_cast<Person**>(ptr) = (Person*)s_firstFree;
+    	s_firstFree = ptr;
     }
-
-    *(size_t*)ptr = *(size_t*)s_firstFree;
-    s_firstFree = ptr;
 }
+
 
 
 inline void Person::operator delete (void* ptr, const std::nothrow_t& nothrow_constant) throw()
@@ -96,5 +97,7 @@ inline void Person::operator delete (void* ptr, const std::nothrow_t& nothrow_co
 
 inline void Person::operator delete (void* ptr, void* voidptr2) throw()
 {}
+
+
 
 #endif //__PERSON_H__
